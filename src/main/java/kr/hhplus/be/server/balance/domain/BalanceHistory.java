@@ -53,4 +53,7 @@ public class BalanceHistory {
     public static BalanceHistory use(Balance balance, int amount, int remainingBalance) {
         return new BalanceHistory(balance, -amount, remainingBalance, BalanceChangeType.USE);
     }
+    public static BalanceHistory restore(Balance balance, int amount, int afterBalance) {
+        return new BalanceHistory(balance, amount, afterBalance, BalanceChangeType.RESTORE);
+    }
 }

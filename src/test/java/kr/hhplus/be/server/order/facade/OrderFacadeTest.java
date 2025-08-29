@@ -13,6 +13,7 @@ import kr.hhplus.be.server.user.domain.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
@@ -28,17 +29,17 @@ class OrderFacadeTest {
     private OrderService orderService;
     private BalanceService balanceService;
     private OrderFacade orderFacade;
-    private TopProductService topProductService;
+    private ApplicationEventPublisher eventPublisher;
 
     @BeforeEach
     void setUp() {
+        eventPublisher = mock(ApplicationEventPublisher.class);
         userService = mock(UserService.class);
         productService = mock(ProductService.class);
         couponService = mock(CouponService.class);
         orderService = mock(OrderService.class);
         balanceService = mock(BalanceService.class);
-        topProductService = mock(TopProductService.class);
-        orderFacade = new OrderFacade(userService, productService, couponService, orderService, balanceService, topProductService);
+        orderFacade = new OrderFacade(eventPublisher, userService, productService, couponService, orderService, balanceService);
     }
 
     @Test

@@ -12,8 +12,7 @@ import java.time.LocalDateTime;
 @Entity
 @Getter
 @NoArgsConstructor
-@Table(name = "order_item", indexes = {
-        @Index(name = "idx_order_item_ordered_date_product", columnList = "ordered_date, product_id")
+@Table(name = "order_item", indexes = {@Index(name = "idx_order_item_ordered_date_product", columnList = "ordered_date, product_id")
         // @Index(name = "idx_order_item_ordered_product", columnList = "ordered_at, product_id"), // X, 통계용 복합, 반정규화 한 ordered_at 으로 3일 이내 TOP 5 목적 방법2
         // @Index(name = "idx_order_item_product_ordered", columnList = "product_id, ordered_at"), // X, 상품 → 날짜 순서 차이 테스트용 목적
         // @Index(name = "idx_order_item_ordered_at", columnList = "ordered_at"), // X, 날짜 필터
@@ -44,6 +43,22 @@ public class OrderItem {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_id")
     private Order order;
+
+    static OrderItem create(Product product, int price, int quantity, int discountAmount, Order order, LocalDateTime orderedAt, LocalDate orderedDate) {
+        if (product == null) throw new IllegalArgumentException("상품은 필수입니다.");
+        if (price < 0) throw new IllegalArgumentException("상품 가격은 0 이상이어야 합니다.");
+        if (quantity <= 0) throw new IllegalArgumentException("상품 수량은 1 이상이어야 합니다.");
+
+        OrderItem item = new OrderItem();
+        item.product = product;
+        item.price = price;
+        item.quantity = quantity;
+        item.discountAmount = discountAmount;
+        item.order = order;
+        item.orderedAt = orderedAt;
+        item.orderedDate = orderedDate;
+        return item;
+    }
 
     public static OrderItem of(Product product, int price, int quantity, int discountAmount) {
         OrderItem item = new OrderItem();

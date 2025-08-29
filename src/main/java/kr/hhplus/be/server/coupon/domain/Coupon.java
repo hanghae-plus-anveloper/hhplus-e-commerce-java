@@ -43,6 +43,13 @@ public class Coupon {
         this.used = true;
     }
 
+    public void restore() {
+        if (!used) {
+            throw new InvalidCouponException("이미 사용 취소된 쿠폰입니다.");
+        }
+        this.used = false;
+    }
+
     public boolean isAvailable() {
         return !used && policy.isWithinPeriod();
     }

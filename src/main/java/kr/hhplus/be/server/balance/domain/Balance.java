@@ -61,4 +61,10 @@ public class Balance {
         this.updatedAt = LocalDateTime.now();
         this.histories.add(BalanceHistory.use(this, amount, this.balance));
     }
+
+    public void restore(int amount) {
+        this.balance += amount;
+        this.updatedAt = LocalDateTime.now();
+        this.histories.add(BalanceHistory.restore(this, amount, this.balance));
+    }
 }

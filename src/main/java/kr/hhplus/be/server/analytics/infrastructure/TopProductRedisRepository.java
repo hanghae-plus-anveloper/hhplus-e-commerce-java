@@ -5,10 +5,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Repository;
 
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Set;
@@ -22,18 +19,29 @@ public class TopProductRedisRepository {
 
     private static final int TTL_DAYS = 4;
     private static final String PRODUCT_RANKING_PREFIX = "RANKING:PRODUCT:";
+    private static final String ISSUED_ORDER_SET = PRODUCT_RANKING_PREFIX + "ISSUED";
 
     private String getDailyKey(LocalDate date) {
         return PRODUCT_RANKING_PREFIX + date.format(FORMATTER);
     }
 
-    public void recordOrder(String productId, int quantity, LocalDate date) {
-        String key = getDailyKey(date);
-        redisTemplate.opsForZSet().incrementScore(key, productId, quantity);
+    public boolean isAlreadyIssued(Long orderId) {
+        return Boolean.TRUE.equals(redisTemplate.opsForSet().isMember(ISSUED_ORDER_SET, orderId.toString()));
+    }
 
-        LocalDateTime expireAt = date.plusDays(TTL_DAYS).atStartOfDay();
-        Instant instant = expireAt.atZone(ZoneId.systemDefault()).toInstant();
-        redisTemplate.expireAt(key, instant);
+    public void markIssued(Long orderId) {
+        redisTemplate.opsForSet().add(ISSUED_ORDER_SET, orderId.toString());
+        redisTemplate.expire(ISSUED_ORDER_SET, Duration.ofDays(TTL_DAYS));
+    }
+
+    public void recordOrders(List<TopProductRecord> items) {
+        String key = getDailyKey(LocalDate.now());
+
+        for (TopProductRecord item : items) {
+            redisTemplate.opsForZSet().incrementScore(key, item.productId(), item.soldQty());
+        }
+
+        redisTemplate.expire(key, Duration.ofDays(TTL_DAYS));
     }
 
     public Set<ZSetOperations.TypedTuple<String>> getTop5InLast3Days() {
@@ -54,5 +62,24 @@ public class TopProductRedisRepository {
                 redisTemplate.opsForZSet().reverseRangeWithScores(unionKey, 0, 4);
 
         return tuples != null ? tuples : Set.of();
+    }
+
+    // 테스트 시 과거기록 세팅용 날짜 포함 함수(운영코드 X)
+    public void recordOrder(String productId, int quantity, LocalDate date) {
+        String key = getDailyKey(date);
+        redisTemplate.opsForZSet().incrementScore(key, productId, quantity);
+
+        LocalDateTime expireAt = date.plusDays(TTL_DAYS).atStartOfDay();
+        Instant instant = expireAt.atZone(ZoneId.systemDefault()).toInstant();
+        redisTemplate.expireAt(key, instant);
+    }
+
+    public void clearAll() {
+        redisTemplate.delete(ISSUED_ORDER_SET);
+        LocalDate today = LocalDate.now();
+        for (int i = 0; i < TTL_DAYS; i++) {
+            redisTemplate.delete(getDailyKey(today.minusDays(i)));
+        }
+        redisTemplate.delete(PRODUCT_RANKING_PREFIX + "TOP5LAST3DAYS");
     }
 }
