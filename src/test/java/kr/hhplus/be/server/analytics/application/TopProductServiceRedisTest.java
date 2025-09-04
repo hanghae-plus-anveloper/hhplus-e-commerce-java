@@ -5,6 +5,7 @@ import kr.hhplus.be.server.analytics.domain.TopProductView;
 import kr.hhplus.be.server.balance.domain.Balance;
 import kr.hhplus.be.server.balance.domain.BalanceRepository;
 import kr.hhplus.be.server.external.mock.infrastructure.OrderExternalRedisRepository;
+import kr.hhplus.be.server.kafka.message.OrderCompletedMessage;
 import kr.hhplus.be.server.order.domain.Order;
 import kr.hhplus.be.server.order.domain.OrderRepository;
 import kr.hhplus.be.server.order.facade.OrderFacade;
@@ -13,20 +14,30 @@ import kr.hhplus.be.server.product.domain.Product;
 import kr.hhplus.be.server.product.domain.ProductRepository;
 import kr.hhplus.be.server.user.domain.User;
 import kr.hhplus.be.server.user.domain.UserRepository;
-import org.junit.jupiter.api.*;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
 import java.time.LocalDate;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
 @SpringBootTest
 @Testcontainers
 @ActiveProfiles("test")
@@ -116,6 +127,57 @@ public class TopProductServiceRedisTest {
 
     }
 
+
+    @Test
+    @DisplayName("OrderCompletedEvent 발생 시 Kafka 메시지가 발행된다")
+    void kafkaMessageProduced(@Value("${app.kafka.topics.order-completed}") String topic) {
+        // test 컨슈머
+        try (KafkaConsumer<String, OrderCompletedMessage> consumer = newTestConsumer()) {
+            consumer.subscribe(Collections.singletonList(topic)); // OrderCompleted Topic 구독
+            consumer.poll(Duration.ofMillis(0));
+
+            // 10건 주문 생성하여, 10건이 발생되는 지, 파티션별 순서가 보장되는 지 확인
+            int expected = 10;
+            IntStream.rangeClosed(1, expected)
+                    .forEach(i -> orderFacade.placeOrder(
+                            user.getId(),
+                            List.of(new OrderItemCommand(p1.getId(), 1)),
+                            null
+                    ));
+
+            // 최대 10초 동안
+            long deadline = System.currentTimeMillis() + 10_000;
+            List<ConsumerRecord<String, OrderCompletedMessage>> collected = new ArrayList<>();
+
+            while (System.currentTimeMillis() < deadline && collected.size() < expected) {
+                ConsumerRecords<String, OrderCompletedMessage> polled = consumer.poll(Duration.ofMillis(500));
+                polled.forEach(collected::add);
+            }
+
+            printKafkaRecords(collected);
+
+            // 10건 수집 건수 확인, 건 별 정합성 확인
+            assertThat(collected.size()).isGreaterThanOrEqualTo(expected);
+            for (ConsumerRecord<String, OrderCompletedMessage> rec : collected) {
+                OrderCompletedMessage msg = rec.value();
+                assertThat(msg).isNotNull();
+                assertThat(msg.userId()).isEqualTo(user.getId().toString());
+                assertThat(msg.lines()).isNotEmpty();
+            }
+
+            // 파티션 별 순번 보장(증가하는 지) 확인
+            Map<TopicPartition, Long> lastOffsetByPartition = new HashMap<>();
+            for (ConsumerRecord<String, OrderCompletedMessage> rec : collected) {
+                TopicPartition tp = new TopicPartition(rec.topic(), rec.partition());
+                Long prev = lastOffsetByPartition.get(tp);
+                if (prev != null) {
+                    assertThat(rec.offset()).isGreaterThan(prev);
+                }
+                lastOffsetByPartition.put(tp, rec.offset());
+            }
+        }
+    }
+
     private void place(Product product, int quantity) {
         orderFacade.placeOrder(user.getId(), List.of(new OrderItemCommand(product.getId(), quantity)), null);
     }
@@ -137,8 +199,36 @@ public class TopProductServiceRedisTest {
 
         }
     }
+
     private void printExternal(Long orderId, Long count) {
         System.out.printf("=== %s ===%n", "외부 핸들러 결과");
         System.out.printf("주문ID: %d, 외부 기록 수: %d%n", orderId, count);
+    }
+
+    private void printKafkaRecords(
+            List<org.apache.kafka.clients.consumer.ConsumerRecord<String, OrderCompletedMessage>> records
+    ) {
+        System.out.println("=== Kafka 수집 결과 ===");
+        for (var r : records) {
+            var v = r.value();
+            System.out.printf("partition=%d\toffset=%d\tkey=%s\torderId=%s\tuserId=%s\tlines=%d\tcompletedAt=%s%n",
+                    r.partition(), r.offset(), r.key(), v != null ? v.orderId() : "null", v != null ? v.userId() : "null",
+                    v != null && v.lines() != null ? v.lines().size() : -1, v != null ? v.completedAt() : "null");
+        }
+    }
+
+    // test consumer 세팅
+    private KafkaConsumer<String, kr.hhplus.be.server.kafka.message.OrderCompletedMessage> newTestConsumer() {
+        Properties props = new Properties();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, System.getProperty("spring.kafka.bootstrap-servers"));
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "test-consumer-" + UUID.randomUUID());
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.springframework.kafka.support.serializer.JsonDeserializer");
+        props.put(JsonDeserializer.TRUSTED_PACKAGES, "kr.hhplus.*");
+        props.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
+        props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, "kr.hhplus.be.server.kafka.message.OrderCompletedMessage");
+
+        return new KafkaConsumer<>(props);
     }
 }

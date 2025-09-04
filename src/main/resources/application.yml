@@ -30,6 +30,52 @@ spring:
       cache-null-values: false
       use-key-prefix: true
 
+  kafka:
+    bootstrap-servers: localhost:9092
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+      acks: 'all'
+      linger-ms: 5
+      batch-size: 32768
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+
+    properties:
+      spring.json.add.type.headers: false
+      spring.json.trusted.packages: "kr.hhplus.*"
+
+    # 테스트/로컬 확인용
+    consumer:
+      group-id: order-consumer
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "kr.hhplus.*"
+        spring.json.value.default.type: "kr.hhplus.be.server.kafka.message.OrderCompletedMessage"
+      auto-offset-reset: earliest
+      enable-auto-commit: true
+
+app:
+  kafka:
+    topics:
+      order-completed: order.completed.v1 # 주문 생성 토픽
+      coupon-pended: coupon.pended.v1 # 쿠폰 대기열 적재 토픽
+    partitions:
+      order-completed: 3
+      coupon-pended: 3
+    consumer-group:
+      order: order-consumer
+      coupon: coupon-consumer
+  test:
+    kafka:
+      consumer-group:
+        order: order-consumer
+        coupon: coupon-consumer
+
 ---
 spring.config.activate.on-profile: local
 

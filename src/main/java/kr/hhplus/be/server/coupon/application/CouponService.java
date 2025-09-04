@@ -1,5 +1,6 @@
 package kr.hhplus.be.server.coupon.application;
 
+import kr.hhplus.be.server.common.event.coupon.CouponPendedEvent;
 import kr.hhplus.be.server.coupon.domain.Coupon;
 import kr.hhplus.be.server.coupon.domain.CouponPolicy;
 import kr.hhplus.be.server.coupon.domain.CouponPolicyRepository;
@@ -8,6 +9,7 @@ import kr.hhplus.be.server.coupon.exception.CouponSoldOutException;
 import kr.hhplus.be.server.coupon.exception.InvalidCouponException;
 import kr.hhplus.be.server.coupon.infrastructure.CouponRedisRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +22,7 @@ public class CouponService {
     private final CouponPolicyRepository couponPolicyRepository;
     private final CouponRepository couponRepository;
     private final CouponRedisRepository couponRedisRepository;
+    private final ApplicationEventPublisher publisher;
 
     @Transactional(readOnly = true)
     public List<CouponPolicy> getActivePolicies() {
@@ -30,7 +33,11 @@ public class CouponService {
     }
 
     public boolean tryIssue(Long userId, Long policyId) {
-        return couponRedisRepository.tryIssue(userId, policyId);
+        boolean accepted = couponRedisRepository.tryIssue(userId, policyId);
+        if (accepted) {
+            publisher.publishEvent(new CouponPendedEvent(userId, policyId));
+        }
+        return accepted;
     }
 
     @Transactional

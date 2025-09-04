@@ -35,7 +35,8 @@ public class CouponWorker {
         }
     }
 
-    @Scheduled(fixedDelay = 1000) // 1초마다 실행
+    // 확정처리는 Kafka로 이전
+    // @Scheduled(fixedDelay = 1000) // 1초마다 실행
     public void processAllPending() {
         List<Long> policyIds = couponService.getAllPolicyIdsInRedis();
 

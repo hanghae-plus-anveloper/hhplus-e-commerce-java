@@ -10,6 +10,7 @@ import kr.hhplus.be.server.coupon.infrastructure.CouponRedisRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -24,12 +25,13 @@ class CouponServiceTest {
     private CouponRepository couponRepository;
     private CouponRedisRepository couponRedisRepository;
     private CouponService couponService;
+    private ApplicationEventPublisher publisher;
 
     @BeforeEach
     void setUp() {
         couponPolicyRepository = mock(CouponPolicyRepository.class);
         couponRepository = mock(CouponRepository.class);
-        couponService = new CouponService(couponPolicyRepository, couponRepository, couponRedisRepository);
+        couponService = new CouponService(couponPolicyRepository, couponRepository, couponRedisRepository, publisher);
     }
 
     @Test

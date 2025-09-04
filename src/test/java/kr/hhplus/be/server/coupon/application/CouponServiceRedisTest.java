@@ -1,7 +1,6 @@
-package kr.hhplus.be.server.coupon.facade;
+package kr.hhplus.be.server.coupon.application;
 
 import kr.hhplus.be.server.IntegrationTestContainersConfig;
-import kr.hhplus.be.server.coupon.application.CouponWorker;
 import kr.hhplus.be.server.coupon.domain.CouponPolicy;
 import kr.hhplus.be.server.coupon.domain.CouponPolicyRepository;
 import kr.hhplus.be.server.coupon.domain.CouponRepository;
@@ -20,7 +19,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,10 +32,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Import(IntegrationTestContainersConfig.class)
-public class CouponFacadeRedisTest {
+public class CouponServiceRedisTest {
 
     @Autowired
-    private CouponFacade couponFacade;
+    private CouponService couponService;
 
     @Autowired
     private CouponWorker couponWorker;
@@ -100,7 +102,7 @@ public class CouponFacadeRedisTest {
                 executor.submit(() -> {
                     try {
                         startLatch.await(); // 동시에 시작
-                        boolean result = couponFacade.tryIssue(user.getId(), policy.getId());
+                        boolean result = couponService.tryIssue(user.getId(), policy.getId());
                         if (result) {
                             acceptedCount.incrementAndGet();
                         } else {
